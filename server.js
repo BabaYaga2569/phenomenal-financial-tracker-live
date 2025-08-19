@@ -3,6 +3,20 @@ const cors = require('cors');
 const path = require('path');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 require('dotenv').config();
+// --- Plaid error helpers (add right after your imports) ---
+function logPlaidError(where, err) {
+  const data = err?.response?.data || err;
+  console.error(`[PLAID ${where}]`, JSON.stringify(data, null, 2));
+}
+
+function mapPlaidErrorToHttp(err) {
+  const code = err?.response?.data?.error_code;
+  if (code === 'PRODUCT_NOT_READY') return { status: 202, body: { pending: true } };
+  if (code === 'ITEM_LOGIN_REQUIRED') return { status: 409, body: { relink: true, reason: code } };
+  if (code === 'INVALID_ACCESS_TOKEN') return { status: 401, body: { error: code } };
+  return { status: 500, body: { error: err?.response?.data || err?.message || 'unknown error' } };
+}
+// --- end helpers ---
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -124,3 +138,4 @@ app.listen(PORT, () => {
   console.log(`🏦 Environment: PRODUCTION`);
 
 });
+
