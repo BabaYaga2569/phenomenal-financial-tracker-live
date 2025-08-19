@@ -1481,7 +1481,7 @@ async function tryLoadLiveData() {
   
   try {
     // Check if backend is available
-    const healthCheck = await fetch(`${API_BASE_URL}/health` 
+    const healthCheck = await fetch(`${API_BASE_URL}/health`); 
       method: 'GET',
       timeout: 5000 
     }).catch(() => null);
