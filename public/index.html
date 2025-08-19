@@ -910,7 +910,7 @@ button,input,select,textarea{
     <div class="header-actions">
       <div class="connection-status">
         <div class="status-dot"></div>
-        <span id="connectionCount">Ready to Connect</span>
+        <span id="connectionCount">0 Banks Connected</span>
       </div>
       <button class="btn ai-btn" onclick="toggleAIAssistant()">
         🧠 AI Assistant
@@ -1411,7 +1411,7 @@ const API_BASE_URL = 'https://phenomenal-financial-tracker-live.onrender.com';
 // Application State with GRACEFUL FALLBACKS
 const AppState = {
   user: {
-    id: 'demo_user',
+    id: 'user_001',
     name: 'User',
     email: null
   },
@@ -1448,6 +1448,12 @@ document.addEventListener('DOMContentLoaded', function() {
   initializeUI();
   initializeAISystem();
   initializeNeuralNetwork();
+  
+  // Set initial state clearly
+  document.getElementById('connectionCount').textContent = '0 Banks Connected';
+  document.getElementById('totalBalance').textContent = '$0.00';
+  document.getElementById('userName').textContent = AppState.user.name;
+  document.getElementById('userAvatar').textContent = AppState.user.name.charAt(0).toUpperCase();
   
   // Try to load real data (graceful fallback)
   setTimeout(() => {
@@ -1505,18 +1511,19 @@ async function loadRealData() {
 }
 
 function initializeOfflineMode() {
-  console.log('🔄 Initializing offline mode with working demo features');
+  console.log('🔄 Initializing offline mode - no fake accounts');
   
-  // Set ready states
+  // Set ready states without fake data
   AppState.ai.status = 'ready';
   AppState.backendStatus = 'offline';
+  AppState.totals.connectedBanks = 0;
   
-  // Update UI to show ready state
+  // Update UI to show clear offline state
   document.getElementById('statusText').textContent = 'Ready to Connect';
-  document.getElementById('connectionCount').textContent = 'Ready to Connect';
+  document.getElementById('connectionCount').textContent = '0 Banks Connected';
   document.getElementById('syncStatusText').textContent = 'Ready for First Bank';
   
-  showNotification('📱 Running in offline mode. Connect banks when ready!', 'info');
+  showNotification('📱 Ready to connect real bank accounts via Plaid!', 'info');
 }
 
 async function tryLoadUserProfile() {
@@ -1589,7 +1596,7 @@ function updateDashboard() {
   // Update dashboard tiles
   document.getElementById('totalBalance').textContent = formatCurrency(totalBalance);
   document.getElementById('connectionCount').textContent = AppState.totals.connectedBanks > 0 ? 
-    `${AppState.totals.connectedBanks} Banks Connected` : 'Ready to Connect';
+    `${AppState.totals.connectedBanks} Banks Connected` : '0 Banks Connected';
   
   // Calculate monthly spending if we have transactions
   if (AppState.transactions.length > 0) {
@@ -1769,40 +1776,9 @@ async function connectNewBank() {
 
 function simulateDemoConnection() {
   setTimeout(() => {
-    showConnectionProgress();
-    updateProgressBar(30, 'Simulating bank authentication...');
-    
-    setTimeout(() => {
-      updateProgressBar(60, 'Demo: Loading sample data...');
-      
-      setTimeout(() => {
-        updateProgressBar(90, 'Demo: Setting up account...');
-        
-        setTimeout(() => {
-          updateProgressBar(100, 'Demo connection complete!');
-          
-          // Add demo account
-          const demoAccount = {
-            account_id: 'demo_checking_001',
-            name: 'Demo Bank Checking',
-            subtype: 'checking',
-            mask: '1234',
-            balances: { current: 5247.83, available: 5200.00 }
-          };
-          
-          AppState.accounts.set(demoAccount.account_id, demoAccount);
-          AppState.totals.connectedBanks = 1;
-          
-          setTimeout(() => {
-            completeConnection('Demo Bank');
-            updateDashboard();
-            updateAccountsDisplay();
-          }, 1000);
-          
-        }, 800);
-      }, 800);
-    }, 800);
-  }, 500);
+    closePlaidModal();
+    showNotification('📱 Demo mode - real Plaid connection needed for live banking', 'info');
+  }, 1000);
 }
 
 function showPlaidModal() {
@@ -1940,8 +1916,8 @@ function completeConnection(institutionName) {
 
 function updateConnectionStatus() {
   const connectionCount = document.getElementById('connectionCount');
-  connectionCount.textContent = AppState.totals.connectedBanks > 0 ? 
-    `${AppState.totals.connectedBanks} Banks Connected` : 'Ready to Connect';
+  const realBanks = AppState.totals.connectedBanks;
+  connectionCount.textContent = realBanks > 0 ? `${realBanks} Banks Connected` : '0 Banks Connected';
 }
 
 // 🧠 AI SYSTEM INITIALIZATION
