@@ -1221,10 +1221,11 @@ button,input,select,textarea{
       <div style="margin:20px 0">
         <div style="font-size:48px;margin-bottom:16px">🏦</div>
         <div style="font-size:16px;margin-bottom:16px;color:var(--muted)">
-          Securely connect your bank account using Plaid's industry-leading technology
+          Connect your real bank account using Plaid
         </div>
         <div style="font-size:12px;color:var(--muted);line-height:1.6">
-          🔒 Bank-level security • 🚀 Instant connection • ⚡ Real-time updates
+          🔒 Bank-level security • 🚀 Instant connection • ⚡ Real-time updates<br>
+          <span style="color:var(--warn)">⚠️ Requires backend server for token generation</span>
         </div>
       </div>
       
@@ -1240,7 +1241,7 @@ button,input,select,textarea{
       
       <div style="display:flex;gap:12px;justify-content:center;margin-top:24px" id="buttonSection">
         <button class="btn plaid-btn" onclick="initializePlaidLink()" id="connectBtn">
-          🚀 Start Secure Connection
+          🚀 Connect My Bank
         </button>
         <button class="btn" onclick="closePlaidModal()">
           Cancel
@@ -1739,16 +1740,8 @@ async function connectNewBank() {
   console.log('🔗 Starting bank connection...');
   showNotification('🚀 Initializing secure bank connection...', 'ai');
   
-  if (AppState.backendStatus === 'unavailable' || AppState.backendStatus === 'offline') {
-    // Show demo connection for offline mode
-    showNotification('📱 Demo mode: Simulating bank connection...', 'info');
-    showPlaidModal();
-    simulateDemoConnection();
-    return;
-  }
-  
   try {
-    // Try to get real link token
+    // Always try to get real link token first
     const response = await fetch(`${API_BASE_URL}/api/plaid/create-link-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1765,20 +1758,18 @@ async function connectNewBank() {
     showPlaidModal();
     
   } catch (error) {
-    console.error('❌ Error connecting bank:', error);
-    showNotification('⚠️ Backend connection issue. Trying demo mode...', 'warning');
+    console.error('❌ Backend connection failed, but showing Plaid modal anyway');
     
-    // Fall back to demo mode
+    // Show Plaid modal even if backend fails - let user try direct Plaid
+    AppState.plaidLinkToken = null;
     showPlaidModal();
-    simulateDemoConnection();
   }
 }
 
 function simulateDemoConnection() {
-  setTimeout(() => {
-    closePlaidModal();
-    showNotification('📱 Demo mode - real Plaid connection needed for live banking', 'info');
-  }, 1000);
+  // This function is no longer used - keeping for compatibility
+  closePlaidModal();
+  showNotification('⚠️ Real backend connection needed for bank linking', 'warning');
 }
 
 function showPlaidModal() {
@@ -1828,14 +1819,25 @@ function initializePlaidLink() {
         if (err) {
           showNotification('❌ Bank connection cancelled', 'error');
         }
+        AppState.isConnecting = false;
       }
     });
     
     linkHandler.open();
   } else {
-    // Fall back to demo connection
-    console.log('🎮 Running demo connection...');
-    simulateDemoConnection();
+    // Show message about needing backend
+    console.log('⚠️ No Plaid token available');
+    showConnectionProgress();
+    updateProgressBar(0, 'Backend connection required for bank linking...');
+    
+    setTimeout(() => {
+      updateProgressBar(100, 'Backend server needed at https://phenomenal-financial-tracker-live.onrender.com');
+      setTimeout(() => {
+        closePlaidModal();
+        showNotification('⚠️ Backend server needed for real bank connections', 'warning');
+        AppState.isConnecting = false;
+      }, 4000);
+    }, 2000);
   }
 }
 
