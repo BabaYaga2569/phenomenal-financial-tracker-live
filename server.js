@@ -30,7 +30,7 @@ app.use(express.static('public'));
 
 // Plaid Configuration - PRODUCTION
 const configuration = new Configuration({
-  basePath: PlaidEnvironments.production,
+  basePath: PlaidEnvironments.development,
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -138,4 +138,5 @@ app.listen(PORT, () => {
   console.log(`🏦 Environment: PRODUCTION`);
 
 });
+
 
