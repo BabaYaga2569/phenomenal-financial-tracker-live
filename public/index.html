@@ -1739,6 +1739,177 @@ window.PhenomenalAI = {
 };
 
 console.log('✅ Plaid wiring ready. Health check =>', `${API_BASE}/health`);
+// ===== BEGIN: override handlePlaidSuccess + live dashboard updates =====
+(function () {
+  // API base
+  const API_BASE = location.origin;
+
+  // --- helpers ---
+  function fmtUSD(n) {
+    return (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  }
+
+  function notify(kind, msg) {
+    if (typeof window.showNotification2 === 'function') return window.showNotification2(kind, msg);
+    if (typeof window.showNotification === 'function') return window.showNotification(kind, msg);
+    console[kind === 'error' ? 'error' : (kind === 'warning' ? 'warn' : 'log')](msg);
+  }
+
+  function closeLinkModalIfAny() {
+    if (typeof window.closePlaidModal2 === 'function') return window.closePlaidModal2();
+    if (typeof window.closePlaidModal === 'function') return window.closePlaidModal();
+  }
+
+  // Find the value element for the tiles by label text
+  function findMetricValueEl(labelText) {
+    const all = Array.from(document.querySelectorAll('*'));
+    const labelNode = all.find(el => {
+      try { return (el.textContent || '').trim().toLowerCase() === labelText.toLowerCase(); }
+      catch { return false; }
+    });
+    if (!labelNode) return null;
+
+    // bubble up a few levels to the card
+    let card = labelNode;
+    for (let i = 0; i < 4 && card; i++) card = card.parentElement;
+    if (!card) card = labelNode.closest('div');
+
+    const candidates = Array.from(card.querySelectorAll('span, div, p, h1, h2, h3'))
+      .filter(el => {
+        const txt = (el.textContent || '').trim();
+        return /\$|^\d+(\.\d+)?$/.test(txt) && txt.length <= 20;
+      });
+    if (candidates.length) return candidates[0];
+
+    return card.querySelector('span, div, p, h1, h2, h3') || null;
+  }
+
+  function ensureMetricTargets() {
+    let totalEl = document.getElementById('totalBalanceValue');
+    let monthEl = document.getElementById('monthlySpendingValue');
+
+    if (!totalEl) {
+      const found = findMetricValueEl('Total Balance');
+      if (found) { found.id = 'totalBalanceValue'; totalEl = found; }
+    }
+    if (!monthEl) {
+      const found = findMetricValueEl('Monthly Spending');
+      if (found) { found.id = 'monthlySpendingValue'; monthEl = found; }
+    }
+    return { totalEl, monthEl };
+  }
+
+  function updateBanksPill(n) {
+    ['connectionCount', 'connectedCount', 'banksConnectedCount'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = `${n} ${n === 1 ? 'Bank' : 'Banks'} Connected`;
+    });
+  }
+
+  // Update dashboard using AppState.{accounts,transactions}
+  function updateDashboard() {
+    if (typeof window.AppState !== 'object') return;
+
+    const accountsArr = window.AppState.accounts instanceof Map
+      ? Array.from(window.AppState.accounts.values())
+      : (window.AppState.accounts || []);
+
+    const total = accountsArr.reduce((sum, a) => {
+      const b = a && a.balances ? a.balances : {};
+      const v = (b.current ?? b.available ?? 0);
+      return sum + (Number(v) || 0);
+    }, 0);
+
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+    const txs = Array.isArray(window.AppState.transactions) ? window.AppState.transactions : [];
+    const monthlySpending = txs.reduce((sum, t) => {
+      const d = (t.date || t.authorized_date || '').slice(0, 7);
+      const amt = Number(t.amount) || 0;
+      if (d === ym && amt > 0) return sum + amt; // positive = outflow
+      return sum;
+    }, 0);
+
+    const { totalEl, monthEl } = ensureMetricTargets();
+    if (totalEl) totalEl.textContent = fmtUSD(total);
+    if (monthEl) monthEl.textContent = fmtUSD(monthlySpending);
+
+    updateBanksPill(accountsArr.length);
+  }
+
+  // >>> OVERRIDE the existing handler used by Plaid Link <<<
+  window.handlePlaidSuccess = async function (public_token, metadata) {
+    try {
+      console.log('🔗 Link success', metadata);
+      const user_id = window.AppState?.user_id || 'user-1';
+
+      // 1) exchange token
+      const ex = await fetch(`${API_BASE}/api/exchange_public_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_token, user_id }),
+      });
+      const exJson = await ex.json().catch(() => ({}));
+      if (!ex.ok || !exJson?.success) {
+        console.error('Exchange failed:', ex.status, exJson);
+        notify('error', 'Token exchange failed. Check server logs.');
+        return;
+      }
+
+      // 2) accounts
+      const accRes = await fetch(`${API_BASE}/api/accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id }),
+      });
+      if (!accRes.ok) {
+        const txt = await accRes.text();
+        console.error('Accounts error:', txt);
+        notify('warning', 'Could not load accounts.');
+        return;
+      }
+      const accData = await accRes.json();
+      const accList = accData?.accounts || [];
+      window.AppState = window.AppState || {};
+      window.AppState.accounts = new Map(accList.map(a => [a.account_id, a]));
+      updateBanksPill(accList.length);
+
+      // 3) transactions
+      const txRes = await fetch(`${API_BASE}/api/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id, start_date: '2024-01-01' }),
+      });
+
+      if (txRes.status === 202) {
+        console.log('Transactions are syncing; try again shortly.');
+      } else if (txRes.ok) {
+        const tJson = await txRes.json();
+        window.AppState.transactions = tJson?.transactions || [];
+      } else {
+        const txt = await txRes.text();
+        console.warn('Transactions fetch failed:', txt);
+      }
+
+      // update UI
+      updateDashboard();
+
+      // close + notify
+      closeLinkModalIfAny();
+      notify('success', `${metadata?.institution?.name || 'Bank'} connected`);
+    } catch (err) {
+      console.error('handlePlaidSuccess failed:', err);
+      notify('error', 'Something went wrong after linking. See console.');
+    } finally {
+      if (window.AppState) window.AppState.isConnecting = false;
+    }
+  };
+
+  // Expose for manual refresh if you want
+  window.updateDashboard = updateDashboard;
+})();
+/// ===== END override =====
+  
 </script>
 
 
