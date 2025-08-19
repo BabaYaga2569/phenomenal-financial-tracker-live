@@ -1909,7 +1909,40 @@ console.log('✅ Plaid wiring ready. Health check =>', `${API_BASE}/health`);
   window.updateDashboard = updateDashboard;
 })();
 /// ===== END override =====
-  
+ <script>
+  // ... keep everything you already have above ...
+
+  // Make the Connect Bank button work again by exposing a global handler
+  window.connectNewBank = async function () {
+    try {
+      // 1) Ask backend to create a Link token for this user
+      const resp = await fetch(`${API_BASE}/api/create_link_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: (window.Appstate && Appstate.user_id) || 'user-1' })
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        console.error('create_link_token failed:', txt);
+        showNotification?.('Could not start Plaid Link (check backend).', 'error');
+        return;
+      }
+      const { link_token } = await resp.json();
+
+      // 2) Open Plaid Link
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: handlePlaidSuccess,
+        onExit: () => {}
+      });
+      handler.open();
+    } catch (err) {
+      console.error('connectNewBank error:', err);
+      showNotification?.('Bank connection failed (see console).', 'error');
+    }
+  };
+</script>
+ 
 </script>
 
 
