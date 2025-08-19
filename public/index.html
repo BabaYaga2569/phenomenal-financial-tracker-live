@@ -1490,28 +1490,86 @@ async function connectNewBank() {
 
 async function handlePlaidSuccess(public_token, metadata) {
   try {
-    // Exchange for access token
-    const r = await fetch(`${API_BASE}/api/set_access_token`, {
+    console.log('✅ Link success', metadata);
+
+    // 1) Exchange & save the access_token for THIS user
+    const ex = await fetch(`${API_BASE}/api/exchange_public_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ public_token, user_id: USER_ID })
+      body: JSON.stringify({
+        public_token,
+        user_id: AppState.user.id, // use the same user id everywhere
+      }),
     });
-    if (!r.ok) throw new Error(`set_access_token ${r.status}`);
 
-    // Load data
-    await tryLoadTransactions();
-    updateDashboard();
+    const exJson = await ex.json().catch(() => ({}));
+    if (!ex.ok || !exJson?.success) {
+      console.error('Exchange failed:', ex.status, exJson);
+      showNotification?.('Token exchange failed. Check server logs.', 'error');
+      return;
+    }
 
-    closePlaidModal();
-    showNotification(`🎉 ${metadata?.institution?.name || 'Bank'} connected!`, 'success');
-  } catch (e) {
-    console.error(e);
-    showNotification('❌ Token exchange failed. Check server logs.', 'error');
-    closePlaidModal();
-  } finally {
+    // 2) Fetch accounts and update the “Banks Connected” pill
+    const accRes = await fetch(`${API_BASE}/api/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: AppState.user.id }),
+    });
+
+    if (!accRes.ok) {
+      const txt = await accRes.text();
+      console.error('Accounts error:', txt);
+      showNotification?.('Could not load accounts.', 'warning');
+      return;
+    }
+
+    const accData = await accRes.json();
+    const accounts = accData.accounts || [];
+    AppState.accounts = new Map(accounts.map(a => [a.account_id, a]));
+
+    // Update header pill (try a few possible element ids)
+    const n = accounts.length;
+    ['connectionCount', 'connectedCount', 'banksConnectedCount'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = `${n} ${n === 1 ? 'Bank' : 'Banks'} Connected`;
+    });
+
+    // 3) Kick off transactions fetch (okay if still syncing)
+    const txRes = await fetch(`${API_BASE}/api/transactions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: AppState.user.id,
+        start_date: '2024-01-01',
+      }),
+    });
+
+    if (txRes.status === 202) {
+      console.log('Transactions are syncing; try again shortly.');
+    } else if (txRes.ok) {
+      const txJson = await txRes.json();
+      AppState.transactions = txJson.transactions || [];
+      // Update any transactions counter if present
+      ['transactionsReady', 'transactionsCount'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(AppState.transactions.length);
+      });
+    } else {
+      const txt = await txRes.text();
+      console.warn('Transactions fetch failed:', txt);
+    }
+
+    // Close modal/UI niceties if you have them
+    closePlaidModal?.();
     AppState.isConnecting = false;
+    showNotification?.(`${metadata?.institution?.name || 'Bank'} connected!`, 'success');
+  } catch (err) {
+    console.error('handlePlaidSuccess failed:', err);
+    AppState.isConnecting = false;
+    showNotification?.('Something went wrong after linking. See console.', 'error');
   }
 }
+
 
 // ===== Data fetching =====
 async function tryLoadTransactions() {
