@@ -164,9 +164,10 @@ app.post('/api/transactions', async (req, res) => {
 });
 
 /* ---------------------------- Start server ----------------------------- */
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Phenomenal Financial Tracker Backend running on port ${PORT}`);
   console.log(`➡ Health check:  http://localhost:${PORT}/health`);
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
