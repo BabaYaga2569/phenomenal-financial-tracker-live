@@ -1946,5 +1946,133 @@ console.log('✅ Plaid wiring ready. Health check =>', `${API_BASE}/health`);
 </script>
 
 
+<!-- Plaid Link bridge: paste directly above </body> -->
+<script>
+(function(){
+  const API = window.API_BASE || '';
+
+  function post(path, body){
+    return fetch(API + path, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body || {})
+    }).then(async r => {
+      if(!r.ok){
+        const t = await r.text().catch(()=> '');
+        throw new Error(t || r.statusText);
+      }
+      return r.json();
+    });
+  }
+
+  // Load Plaid Link script if missing
+  function loadPlaid(){
+    return new Promise((resolve, reject) => {
+      if (window.Plaid) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Failed to load Plaid Link script'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function openLink(){
+    try {
+      await loadPlaid();
+
+      // Try /api/create_link_token first, fallback to /create_link_token
+      let linkResp;
+      try {
+        linkResp = await post('/api/create_link_token', { user_id: 'user-1' });
+      } catch {
+        linkResp = await post('/create_link_token', { user_id: 'user-1' });
+      }
+      const link_token =
+        linkResp.link_token || linkResp.linkToken || (linkResp.data && linkResp.data.link_token);
+      if (!link_token) throw new Error('No link_token in response');
+
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: async function(public_token, metadata){
+          try {
+            // Exchange token: try /api first, then fallback
+            try {
+              await post('/api/exchange_public_token', { public_token, user_id: 'user-1' });
+            } catch {
+              await post('/exchange_public_token', { public_token, user_id: 'user-1' });
+            }
+
+            // Kick off server-side fetches (safe if your server already does it)
+            post('/api/accounts', { user_id: 'user-1' }).catch(()=>{});
+            post('/api/transactions', { user_id: 'user-1', start_date: '2024-01-01' }).catch(()=>{});
+
+            // Let any other code know, then hard-refresh as a fallback
+            window.dispatchEvent(new CustomEvent('bank:connected'));
+            setTimeout(() => location.reload(), 400);
+          } catch (e) {
+            console.error('Follow-up failed:', e);
+            alert('Bank connected, but server follow-up failed. See console.');
+          }
+        },
+        onExit: function(err){
+          if (err) console.warn('Link exit', err);
+        }
+      });
+
+      handler.open();
+    } catch (e){
+      console.error('Could not start Plaid Link:', e);
+      alert('Could not start Plaid Link. See console for details.');
+    }
+  }
+
+  // Make it callable if your HTML uses onclick="connectNewBank()"
+  window.connectNewBank = openLink;
+
+  // Auto-bind common buttons so you don’t have to change your UI
+  function bindButtons(){
+    const selectors = [
+      '#connect-bank-btn',
+      '#connectBank',
+      '[data-connect-bank]',
+      '.connect-bank',
+      'button#connect',
+      'button.connect'
+    ];
+    let bound = false;
+    selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(btn => {
+        if (btn.__plaidBound) return;
+        btn.addEventListener('click', function(e){
+          e.preventDefault();
+          openLink();
+        });
+        btn.__plaidBound = true;
+        bound = true;
+      });
+    });
+    // Last-resort: delegate clicks for any button with text like “Connect”
+    if (!bound) {
+      document.addEventListener('click', function(e){
+        const t = e.target.closest('button, a');
+        if (!t) return;
+        const txt = (t.textContent || '').trim().toLowerCase();
+        if (txt === 'connect' || txt === 'connect bank' || txt === 'connect now') {
+          e.preventDefault();
+          openLink();
+        }
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindButtons);
+  } else {
+    bindButtons();
+  }
+})();
+</script>
 </body>
 </html>
