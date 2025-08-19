@@ -95,20 +95,26 @@ app.post('/api/transactions', async (req, res) => {
     const { user_id, start_date, end_date } = req.body;
     const tokenData = accessTokens.get(user_id);
     if (!tokenData) return res.status(400).json({ error: 'No access token found' });
+
     const request = {
       access_token: tokenData.accessToken,
       start_date: start_date || '2024-01-01',
       end_date: end_date || new Date().toISOString().split('T')[0],
-      count: 500,
-      offset: 0,
+      // IMPORTANT: pagination options belong under `options`
+      options: {
+        count: 500,
+        offset: 0,
+      },
     };
+
     const response = await client.transactionsGet(request);
     res.json(response.data);
   } catch (error) {
-    console.error('Error getting transactions:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error getting transactions:', error.response?.data || error.message);
+    res.status(500).json({ error: error.response?.data || error.message });
   }
 });
+
 
 // Start server
 app.listen(PORT, () => {
@@ -116,4 +122,5 @@ app.listen(PORT, () => {
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
   console.log(`🏠 App: http://localhost:${PORT}`);
   console.log(`🏦 Environment: PRODUCTION`);
+
 });
