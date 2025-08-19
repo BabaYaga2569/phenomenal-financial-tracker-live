@@ -1481,7 +1481,7 @@ async function tryLoadLiveData() {
   
   try {
     // Check if backend is available
-    const healthCheck = await fetch(`${API_BASE_URL}/api/health`, { 
+    const healthCheck = await fetch(`${API_BASE_URL}/health` 
       method: 'GET',
       timeout: 5000 
     }).catch(() => null);
@@ -1537,7 +1537,7 @@ function initializeOfflineMode() {
 
 async function tryLoadUserProfile() {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/user/profile`);
+    const response = await fetch(`${API_BASE_URL}/api/create_link_token`
     if (response.ok) {
       const userData = await response.json();
       AppState.user = userData;
@@ -1750,7 +1750,7 @@ async function connectNewBank() {
   
   try {
     // Always try to get real link token first
-    const response = await fetch(`${API_BASE_URL}/api/plaid/create-link-token`, {
+    const response = await fetch(`${API_BASE_URL}/api/create_link_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: AppState.user.id })
@@ -2886,7 +2886,7 @@ window.PhenomenalAI = {
   // Backend status
   checkBackend: async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/health`);
+      const response = await fetch(`${API_BASE_URL}/health`);
       return response.ok ? 'available' : 'unavailable';
     } catch {
       return 'unavailable';
