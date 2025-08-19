@@ -1554,6 +1554,12 @@ async function handlePlaidSuccess(public_token, metadata) {
         const el = document.getElementById(id);
         if (el) el.textContent = String(AppState.transactions.length);
       });
+      if (typeof updateDashboard === 'function') updateDashboard();
+
+} else {
+  const txt = await txRes.text();
+  console.warn('Transactions fetch failed:', txt);
+}
     } else {
       const txt = await txRes.text();
       console.warn('Transactions fetch failed:', txt);
