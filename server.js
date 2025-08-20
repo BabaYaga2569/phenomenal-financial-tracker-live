@@ -54,7 +54,6 @@ const configuration = new Configuration({
 
 const client = new PlaidApi(configuration);
 
-// Simple in-memory token store keyed by user_id
 // Database connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -66,12 +65,12 @@ async function initDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_tokens (
-  id SERIAL PRIMARY KEY,
-  user_id VARCHAR(255) NOT NULL,
-  access_token TEXT NOT NULL,
-  institution_name VARCHAR(255),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        access_token TEXT NOT NULL,
+        institution_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
     console.log('✅ Database tables initialized');
   } catch (error) {
@@ -125,15 +124,18 @@ app.post('/api/exchange_public_token', async (req, res) => {
       return res.status(400).json({ error: 'Missing public_token' });
     }
 
+    console.log('[Plaid exchange_public_token]', { public_token, user_id, institution_name });
+
     const response = await client.itemPublicTokenExchange({ public_token });
     const accessToken = response.data.access_token;
 
-    // store per-user
+    // Store in database
     await pool.query(
-  'INSERT INTO user_tokens (user_id, access_token, institution_name) VALUES ($1, $2, $3)',
-  [user_id || 'user-1', accessToken, institution_name || 'Bank'
-);
+      'INSERT INTO user_tokens (user_id, access_token, institution_name) VALUES ($1, $2, $3)',
+      [user_id || 'user-1', accessToken, institution_name || 'Bank']
+    );
 
+    console.log('✅ Access token saved to database');
     res.json({ success: true });
   } catch (err) {
     logPlaidError('exchange_public_token', err);
@@ -143,14 +145,16 @@ app.post('/api/exchange_public_token', async (req, res) => {
 });
 
 // 3) Get accounts
-// 3) Get accounts
-app.post('/api/accounts', async (req, res) => {
+app.get('/api/accounts', async (req, res) => {
   try {
-    const { user_id } = req.body;
-    const result = await pool.query('SELECT access_token, institution_name FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
+    const user_id = req.query.user_id || 'user-1';
+    const result = await pool.query(
+      'SELECT access_token, institution_name FROM user_tokens WHERE user_id = $1', 
+      [user_id]
+    );
     
     if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'No access tokens found' });
+      return res.json([]); // No connected accounts
     }
 
     let allAccounts = [];
@@ -163,17 +167,11 @@ app.post('/api/accounts', async (req, res) => {
         allAccounts = allAccounts.concat(response.data.accounts);
       } catch (err) {
         console.error('Error getting accounts for token:', err);
+        // Continue with other tokens even if one fails
       }
     }
-    if (!tokenData) {
-      return res.status(400).json({ error: 'No access token found' });
-    }
 
-    const response = await client.accountsGet({
-      access_token: tokenData.accessToken,
-    });
-
-    res.json({ accounts: allAccounts });
+    res.json(allAccounts);
   } catch (err) {
     logPlaidError('accounts_get', err);
     const { status, body } = mapPlaidErrorToHttp(err);
@@ -182,27 +180,44 @@ app.post('/api/accounts', async (req, res) => {
 });
 
 // 4) Get transactions
-app.post('/api/transactions', async (req, res) => {
+app.get('/api/transactions', async (req, res) => {
   try {
-    const { user_id, start_date, end_date } = req.body;
-    const result = await pool.query('SELECT access_token FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
-const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } : null;
-    if (!tokenData) {
-      return res.status(400).json({ error: 'No access token found' });
+    const user_id = req.query.user_id || 'user-1';
+    const start_date = req.query.start_date || '2024-01-01';
+    const end_date = req.query.end_date || new Date().toISOString().split('T')[0];
+
+    const result = await pool.query(
+      'SELECT access_token FROM user_tokens WHERE user_id = $1', 
+      [user_id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json([]); // No connected accounts
     }
 
-    const request = {
-      access_token: tokenData.accessToken,
-      start_date: start_date || '2024-01-01',
-      end_date: end_date || new Date().toISOString().split('T')[0],
-      options: {
-        count: 500,
-        offset: 0,
-      },
-    };
+    let allTransactions = [];
 
-    const response = await client.transactionsGet(request);
-    res.json({ transactions: allTransactions });
+    for (const row of result.rows) {
+      try {
+        const request = {
+          access_token: row.access_token,
+          start_date: start_date,
+          end_date: end_date,
+          options: {
+            count: 500,
+            offset: 0,
+          },
+        };
+
+        const response = await client.transactionsGet(request);
+        allTransactions = allTransactions.concat(response.data.transactions);
+      } catch (err) {
+        console.error('Error getting transactions for token:', err);
+        // Continue with other tokens even if one fails
+      }
+    }
+
+    res.json(allTransactions);
   } catch (err) {
     logPlaidError('transactions_get', err);
     const { status, body } = mapPlaidErrorToHttp(err);
@@ -217,8 +232,3 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
-
-
-
-
-
