@@ -145,9 +145,9 @@ app.post('/api/exchange_public_token', async (req, res) => {
 });
 
 // 3) Get accounts
-app.get('/api/accounts', async (req, res) => {
+app.post('/api/accounts', async (req, res) => {
   try {
-    const user_id = req.query.user_id || 'user-1';
+    const user_id = req.body.user_id || 'user-1';
     const result = await pool.query(
       'SELECT access_token, institution_name FROM user_tokens WHERE user_id = $1', 
       [user_id]
@@ -180,11 +180,11 @@ app.get('/api/accounts', async (req, res) => {
 });
 
 // 4) Get transactions
-app.get('/api/transactions', async (req, res) => {
+app.post('/api/transactions', async (req, res) => {
   try {
-    const user_id = req.query.user_id || 'user-1';
-    const start_date = req.query.start_date || '2024-01-01';
-    const end_date = req.query.end_date || new Date().toISOString().split('T')[0];
+    const user_id = req.body.user_id || 'user-1';
+    const start_date = req.body.start_date || '2024-01-01';
+    const end_date = req.body.end_date || new Date().toISOString().split('T')[0];
 
     const result = await pool.query(
       'SELECT access_token FROM user_tokens WHERE user_id = $1', 
