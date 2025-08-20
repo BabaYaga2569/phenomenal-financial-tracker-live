@@ -43,7 +43,7 @@ function mapPlaidErrorToHttp(err) {
 
 /* ------------------------ Plaid client (PROD) -------------------------- */
 const configuration = new Configuration({
-  basePath: PlaidEnvironments.sandbox, // ← sandbox for testing
+  basePath: PlaidEnvironments.production, // ← Production
   baseOptions: {
     headers: {
       'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
@@ -232,4 +232,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
