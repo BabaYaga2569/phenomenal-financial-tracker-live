@@ -120,7 +120,7 @@ app.post('/api/create_link_token', async (req, res) => {
 // 2) Exchange public_token for access_token
 app.post('/api/exchange_public_token', async (req, res) => {
   try {
-    const { public_token, user_id } = req.body;
+    const { public_token, user_id, institution_name } = req.body;
     if (!public_token) {
       return res.status(400).json({ error: 'Missing public_token' });
     }
@@ -130,8 +130,8 @@ app.post('/api/exchange_public_token', async (req, res) => {
 
     // store per-user
     await pool.query(
-  'INSERT INTO user_tokens (user_id, access_token) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET access_token = $2',
-  [user_id || 'user-1', accessToken]
+  'INSERT INTO user_tokens (user_id, access_token, institution_name) VALUES ($1, $2, $3)',
+  [user_id || 'user-1', accessToken, metadata.institution?.name || 'Bank']
 );
 
     res.json({ success: true });
@@ -143,11 +143,28 @@ app.post('/api/exchange_public_token', async (req, res) => {
 });
 
 // 3) Get accounts
+// 3) Get accounts
 app.post('/api/accounts', async (req, res) => {
   try {
     const { user_id } = req.body;
-    const result = await pool.query('SELECT access_token FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
-const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } : null;
+    const result = await pool.query('SELECT access_token, institution_name FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
+    
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'No access tokens found' });
+    }
+
+    let allAccounts = [];
+    
+    for (const row of result.rows) {
+      try {
+        const response = await client.accountsGet({
+          access_token: row.access_token,
+        });
+        allAccounts = allAccounts.concat(response.data.accounts);
+      } catch (err) {
+        console.error('Error getting accounts for token:', err);
+      }
+    }
     if (!tokenData) {
       return res.status(400).json({ error: 'No access token found' });
     }
@@ -156,7 +173,7 @@ const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } 
       access_token: tokenData.accessToken,
     });
 
-    res.json(response.data);
+    res.json({ accounts: allAccounts });
   } catch (err) {
     logPlaidError('accounts_get', err);
     const { status, body } = mapPlaidErrorToHttp(err);
@@ -185,7 +202,7 @@ const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } 
     };
 
     const response = await client.transactionsGet(request);
-    res.json(response.data);
+    res.json({ transactions: allTransactions });
   } catch (err) {
     logPlaidError('transactions_get', err);
     const { status, body } = mapPlaidErrorToHttp(err);
@@ -200,6 +217,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
 
 
