@@ -6,6 +6,10 @@ const cors = require('cors');
 const path = require('path');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 require('dotenv').config();
+
+// Add this debug line temporarily
+console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL ? 'LOADED' : 'MISSING');
+console.log('🔍 NODE_ENV:', process.env.NODE_ENV);
 const { Pool } = require('pg');
 
 /* ------------------------------ App setup ------------------------------ */
@@ -232,5 +236,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
 
