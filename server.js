@@ -131,7 +131,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
     // store per-user
     await pool.query(
   'INSERT INTO user_tokens (user_id, access_token, institution_name) VALUES ($1, $2, $3)',
-  [user_id || 'user-1', accessToken, metadata.institution?.name || 'Bank']
+  [user_id || 'user-1', accessToken, institution_name || 'Bank'
 );
 
     res.json({ success: true });
@@ -217,6 +217,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
 
 
