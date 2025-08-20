@@ -66,10 +66,12 @@ async function initDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_tokens (
-        user_id VARCHAR(255) PRIMARY KEY,
-        access_token TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  access_token TEXT NOT NULL,
+  institution_name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
     `);
     console.log('✅ Database tables initialized');
   } catch (error) {
@@ -198,5 +200,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
 
