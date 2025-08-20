@@ -6,6 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 require('dotenv').config();
+const { Pool } = require('pg');
 
 /* ------------------------------ App setup ------------------------------ */
 const app = express();
@@ -54,7 +55,29 @@ const configuration = new Configuration({
 const client = new PlaidApi(configuration);
 
 // Simple in-memory token store keyed by user_id
-const accessTokens = new Map();
+// Database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+// Initialize database tables
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_tokens (
+        user_id VARCHAR(255) PRIMARY KEY,
+        access_token TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Database tables initialized');
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+  }
+}
+
+initDatabase();
 
 /* ------------------------------- Routes -------------------------------- */
 
@@ -104,7 +127,10 @@ app.post('/api/exchange_public_token', async (req, res) => {
     const accessToken = response.data.access_token;
 
     // store per-user
-    accessTokens.set(user_id || 'user-1', { accessToken });
+    await pool.query(
+  'INSERT INTO user_tokens (user_id, access_token) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET access_token = $2',
+  [user_id || 'user-1', accessToken]
+);
 
     res.json({ success: true });
   } catch (err) {
@@ -118,7 +144,8 @@ app.post('/api/exchange_public_token', async (req, res) => {
 app.post('/api/accounts', async (req, res) => {
   try {
     const { user_id } = req.body;
-    const tokenData = accessTokens.get(user_id || 'user-1');
+    const result = await pool.query('SELECT access_token FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
+const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } : null;
     if (!tokenData) {
       return res.status(400).json({ error: 'No access token found' });
     }
@@ -139,7 +166,8 @@ app.post('/api/accounts', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   try {
     const { user_id, start_date, end_date } = req.body;
-    const tokenData = accessTokens.get(user_id || 'user-1');
+    const result = await pool.query('SELECT access_token FROM user_tokens WHERE user_id = $1', [user_id || 'user-1']);
+const tokenData = result.rows[0] ? { accessToken: result.rows[0].access_token } : null;
     if (!tokenData) {
       return res.status(400).json({ error: 'No access token found' });
     }
@@ -170,4 +198,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`➡ App:           http://localhost:${PORT}`);
   console.log('🌎 Environment: PRODUCTION');
 });
+
 
